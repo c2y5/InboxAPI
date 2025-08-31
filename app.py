@@ -25,8 +25,7 @@ app.config["JWT_COOKIE_CSRF_PROTECT"] = True
 jwt = JWTManager(app)
 limiter = Limiter(
     get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"]
+    app=app
 )
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -292,3 +291,4 @@ def ratelimit_handler(e):
 
 if __name__ == "__main__":
     app.run()
+
