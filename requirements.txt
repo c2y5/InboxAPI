@@ -1,0 +1,7 @@
+flask
+pymongo
+gunicorn
+python-dotenv
+flask-limiter
+flask-jwt-extended
+datetime

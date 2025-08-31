@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>InboxAPI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white min-h-screen flex flex-col">
+  <header class="bg-gray-800/80 backdrop-blur-lg shadow-lg p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold text-blue-400">InboxAPI Dashboard</h1>
+    <button id="logoutBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg shadow-md transition">
+      Logout
+    </button>
+  </header>
+
+  <main class="flex-grow p-6 max-w-5xl mx-auto w-full space-y-8">
+    <section>
+      <h2 class="text-2xl font-bold mb-2">Welcome, <span id="username" class="text-blue-400">...</span></h2>
+      <p class="text-gray-400">Here’s your account info and namespaces.</p>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">Namespaces</h2>
+      <div id="namespacesList" class="space-y-4">
+        <p class="text-gray-500">Loading namespaces...</p>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-bold mb-4">API Key</h2>
+      <div id="apikeyCard" class="bg-gray-800/70 p-5 rounded-xl shadow-md hidden">
+        <div class="flex justify-between items-center">
+          <div>
+            <p class="text-gray-400 text-sm mb-1">Use this API key:</p>
+            <p id="apikeyText" class="text-sm text-blue-400 font-mono break-all"></p>
+          </div>
+          <button id="copyApiKey" class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-500 rounded shadow">COPY</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-gray-500 text-sm py-4 border-t border-gray-700">
+    &copy; 2025 InboxAPI
+  </footer>
+
+  <script>
+    let globalApiKey = "";
+
+    async function loadDashboard() {
+      try {
+        const res = await fetch("/api/@me", { credentials: "include" });
+        if (!res.ok) {
+          window.location.href = "/login";
+          return;
+        }
+        const data = await res.json();
+
+        document.getElementById("username").textContent = data.username;
+
+        globalApiKey = data.apikey;
+        document.getElementById("apikeyText").textContent = globalApiKey;
+        document.getElementById("apikeyCard").classList.remove("hidden");
+        document.getElementById("copyApiKey").onclick = () => {
+          navigator.clipboard.writeText(globalApiKey);
+        };
+
+        const nsList = document.getElementById("namespacesList");
+        nsList.innerHTML = "";
+        if (data.namespaces.length === 0) {
+          nsList.innerHTML = '<p class="text-gray-500">No namespaces yet.</p>';
+        } else {
+          data.namespaces.forEach(ns => {
+            const card = document.createElement("div");
+            card.className = "bg-gray-800/70 p-5 rounded-xl shadow-md flex justify-between items-center";
+            card.innerHTML = `
+              <div>
+                <h3 class="font-semibold text-lg">${ns}</h3>
+                <p class="text-sm text-gray-400">Send emails to <span class="text-blue-400">${ns}.{tag}@mail.aesis.xyz</span></p>
+              </div>
+              <div class="flex space-x-3">
+                <button class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-500 rounded shadow" onclick="navigator.clipboard.writeText('${ns}')">COPY</button>
+                <button class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded" onclick="viewJson('${ns}')">VIEW JSON</button>
+              </div>
+            `;
+            nsList.appendChild(card);
+          });
+        }
+      } catch (err) {
+        console.error("Error loading dashboard:", err);
+        window.location.href = "/login";
+      }
+    }
+
+    function viewJson(ns) {
+      window.location.href = `/api/json?apikey=${globalApiKey}&namespace=${ns}&limit=10`;
+    }
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      await fetch("/api/logout", { method: "POST", credentials: "include" });
+      window.location.href = "/";
+    });
+
+    loadDashboard();
+  </script>
+</body>
+</html>
