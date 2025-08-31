@@ -22,6 +22,8 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_COOKIE_SECURE"] = True
 app.config["JWT_COOKIE_CSRF_PROTECT"] = True
+app.config["JWT_CSRF_CHECK_FORM"] = True
+app.config["JWT_CSRF_IN_COOKIES"] = True
 jwt = JWTManager(app)
 limiter = Limiter(
     get_remote_address,
@@ -49,6 +51,71 @@ def register_page():
 @app.route("/dashboard")
 def dashboard_page():
     return render_template("dashboard.html")
+
+@limiter.limit("10 per minute")
+@app.route("/api/namespace", methods=["POST"])
+@jwt_required()
+def create_namespace():
+    current_username = get_jwt_identity()
+    
+    user = loginCollection.find_one({"username": current_username})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    api_key = user["apikey"]
+    api_key_doc = apiKeyCollection.find_one({"apikey": api_key})
+    
+    if not api_key_doc:
+        return jsonify({"error": "API key not found"}), 404
+    
+    if len(api_key_doc.get("namespaces", [])) >= 10:
+        return jsonify({"error": "Maximum of 10 namespaces reached"}), 400
+    
+    while True:
+        namespace = "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(5))
+        if not apiKeyCollection.find_one({"namespaces": namespace}):
+            break
+    
+    apiKeyCollection.update_one(
+        {"apikey": api_key},
+        {"$push": {"namespaces": namespace}}
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "namespace": namespace
+    }), 201
+
+@limiter.limit("10 per minute")
+@app.route("/api/namespace/<namespace>", methods=["DELETE"])
+@jwt_required()
+def delete_namespace(namespace):
+    current_username = get_jwt_identity()
+    
+    user = loginCollection.find_one({"username": current_username})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    api_key = user["apikey"]
+    api_key_doc = apiKeyCollection.find_one({"apikey": api_key})
+    
+    if not api_key_doc:
+        return jsonify({"error": "API key not found"}), 404
+    
+    if namespace not in api_key_doc.get("namespaces", []):
+        return jsonify({"error": "Namespace not found"}), 404
+    
+    if len(api_key_doc.get("namespaces", [])) <= 1:
+        return jsonify({"error": "You must have at least one namespace"}), 400
+    
+    apiKeyCollection.update_one(
+        {"apikey": api_key},
+        {"$pull": {"namespaces": namespace}}
+    )
+    
+    db[namespace].drop()
+    
+    return jsonify({"status": "ok"}), 200
 
 @limiter.limit("5 per minute")
 @app.route("/api/login", methods=["POST"])
@@ -291,4 +358,3 @@ def ratelimit_handler(e):
 
 if __name__ == "__main__":
     app.run()
-

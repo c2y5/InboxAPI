@@ -20,7 +20,12 @@
     </section>
 
     <section>
-      <h2 class="text-2xl font-bold mb-4">Namespaces</h2>
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-2xl font-bold">Namespaces</h2>
+        <button id="createNamespaceBtn" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg shadow-md transition">
+          + Create New
+        </button>
+      </div>
       <div id="namespacesList" class="space-y-4">
         <p class="text-gray-500">Loading namespaces...</p>
       </div>
@@ -44,12 +49,66 @@
     &copy; 2025 InboxAPI
   </footer>
 
+  <div id="createNamespaceModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-gray-800 p-6 rounded-xl shadow-xl w-full max-w-md">
+      <h3 class="text-xl font-bold mb-4">Create New Namespace</h3>
+      <p class="text-gray-400 mb-4">A new 5-character namespace will be generated for you.</p>
+      <div class="flex justify-end space-x-3">
+        <button id="cancelCreateBtn" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded">Cancel</button>
+        <button id="confirmCreateBtn" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="deleteNamespaceModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-gray-800 p-6 rounded-xl shadow-xl w-full max-w-md">
+      <h3 class="text-xl font-bold mb-4">Delete Namespace</h3>
+      <p class="text-gray-400 mb-4">Are you sure you want to delete namespace <span id="namespaceToDelete" class="font-bold"></span>? This will also delete all emails in this namespace.</p>
+      <div class="flex justify-end space-x-3">
+        <button id="cancelDeleteBtn" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded">Cancel</button>
+        <button id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let globalApiKey = "";
+    let currentNamespaces = [];
+    let isCreatingNamespace = false;
+
+    function getCSRFToken() {
+      const name = "csrf_access_token=";
+      const decodedCookie = decodeURIComponent(document.cookie);
+      const ca = decodedCookie.split(";");
+      for(let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === " ") {
+          c = c.substring(1);
+        }
+        if (c.indexOf(name) === 0) {
+          return c.substring(name.length, c.length);
+        }
+      }
+      return "";
+    }
+
+    async function makeAuthedRequest(url, options = {}) {
+      const csrfToken = getCSRFToken();
+      const defaultOptions = {
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": csrfToken
+        }
+      };
+      
+      const mergedOptions = { ...defaultOptions, ...options };
+      return await fetch(url, mergedOptions);
+    }
 
     async function loadDashboard() {
       try {
-        const res = await fetch("/api/@me", { credentials: "include" });
+        const res = await makeAuthedRequest("/api/@me");
         if (!res.ok) {
           window.location.href = "/login";
           return;
@@ -65,40 +124,165 @@
           navigator.clipboard.writeText(globalApiKey);
         };
 
-        const nsList = document.getElementById("namespacesList");
-        nsList.innerHTML = "";
-        if (data.namespaces.length === 0) {
-          nsList.innerHTML = '<p class="text-gray-500">No namespaces yet.</p>';
-        } else {
-          data.namespaces.forEach(ns => {
-            const card = document.createElement("div");
-            card.className = "bg-gray-800/70 p-5 rounded-xl shadow-md flex justify-between items-center";
-            card.innerHTML = `
-              <div>
-                <h3 class="font-semibold text-lg">${ns}</h3>
-                <p class="text-sm text-gray-400">Send emails to <span class="text-blue-400">${ns}.{tag}@mail.aesis.xyz</span></p>
-              </div>
-              <div class="flex space-x-3">
-                <button class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-500 rounded shadow" onclick="navigator.clipboard.writeText('${ns}')">COPY</button>
-                <button class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded" onclick="viewJson('${ns}')">VIEW JSON</button>
-              </div>
-            `;
-            nsList.appendChild(card);
-          });
-        }
+        currentNamespaces = data.namespaces;
+        renderNamespaces();
       } catch (err) {
         console.error("Error loading dashboard:", err);
         window.location.href = "/login";
       }
     }
 
+    function renderNamespaces() {
+      const nsList = document.getElementById("namespacesList");
+      nsList.innerHTML = "";
+      
+      if (currentNamespaces.length === 0) {
+        nsList.innerHTML = "<p class='text-gray-500'>No namespaces yet.</p>";
+      } else {
+        currentNamespaces.forEach(ns => {
+          const card = document.createElement("div");
+          card.className = "bg-gray-800/70 p-5 rounded-xl shadow-md flex justify-between items-center";
+          
+          const deleteButton = currentNamespaces.length > 1 ? 
+            `<button class="px-3 py-1 text-sm bg-red-600 hover:bg-red-500 rounded" onclick="confirmDelete("${ns}")">DELETE</button>` : 
+            "";
+          
+          card.innerHTML = `
+            <div>
+              <h3 class="font-semibold text-lg">${ns}</h3>
+              <p class="text-sm text-gray-400">Send emails to <span class="text-blue-400">${ns}.{tag}@mail.aesis.xyz</span></p>
+            </div>
+            <div class="flex space-x-3">
+              <button class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-500 rounded shadow" onclick="navigator.clipboard.writeText("${ns}")">COPY</button>
+              <button class="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded" onclick="viewJson("${ns}")">VIEW JSON</button>
+              ${deleteButton}
+            </div>
+          `;
+          nsList.appendChild(card);
+        });
+      }
+      
+      const createBtn = document.getElementById("createNamespaceBtn");
+      createBtn.style.display = currentNamespaces.length >= 10 ? "none" : "block";
+      
+      createBtn.disabled = false;
+      createBtn.textContent = "+ Create New";
+      createBtn.classList.remove("bg-gray-500", "cursor-not-allowed");
+      createBtn.classList.add("bg-green-600", "hover:bg-green-500");
+    }
+
     function viewJson(ns) {
       window.location.href = `/api/json?apikey=${globalApiKey}&namespace=${ns}&limit=10`;
     }
 
+    document.getElementById("createNamespaceBtn").addEventListener("click", () => {
+      document.getElementById("createNamespaceModal").classList.remove("hidden");
+    });
+
+    document.getElementById("cancelCreateBtn").addEventListener("click", () => {
+      document.getElementById("createNamespaceModal").classList.add("hidden");
+    });
+
+    document.getElementById("confirmCreateBtn").addEventListener("click", async () => {
+      if (isCreatingNamespace) return;
+      
+      isCreatingNamespace = true;
+      
+      const confirmBtn = document.getElementById("confirmCreateBtn");
+      const originalText = confirmBtn.textContent;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Creating...";
+      confirmBtn.classList.remove("bg-green-600", "hover:bg-green-500");
+      confirmBtn.classList.add("bg-gray-500", "cursor-not-allowed");
+      
+      try {
+        const response = await makeAuthedRequest("/api/namespace", {
+          method: "POST"
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          alert(`Namespace created: ${result.namespace}`);
+          document.getElementById("createNamespaceModal").classList.add("hidden");
+          loadDashboard();
+        } else {
+          const error = await response.json();
+          alert(`Error: ${error.error}`);
+        }
+      } catch (error) {
+        console.error("Error creating namespace:", error);
+        alert("Error creating namespace");
+      } finally {
+        isCreatingNamespace = false;
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+        confirmBtn.classList.remove("bg-gray-500", "cursor-not-allowed");
+        confirmBtn.classList.add("bg-green-600", "hover:bg-green-500");
+      }
+    });
+
+    let namespaceToDelete = "";
+    let isDeletingNamespace = false;
+
+    function confirmDelete(namespace) {
+      namespaceToDelete = namespace;
+      document.getElementById("namespaceToDelete").textContent = namespace;
+      document.getElementById("deleteNamespaceModal").classList.remove("hidden");
+    }
+
+    document.getElementById("cancelDeleteBtn").addEventListener("click", () => {
+      document.getElementById("deleteNamespaceModal").classList.add("hidden");
+    });
+
+    document.getElementById("confirmDeleteBtn").addEventListener("click", async () => {
+      if (isDeletingNamespace) return;
+      
+      isDeletingNamespace = true;
+      
+      const confirmBtn = document.getElementById("confirmDeleteBtn");
+      const originalText = confirmBtn.textContent;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Deleting...";
+      confirmBtn.classList.remove("bg-red-600", "hover:bg-red-500");
+      confirmBtn.classList.add("bg-gray-500", "cursor-not-allowed");
+      
+      try {
+        const response = await makeAuthedRequest(`/api/namespace/${namespaceToDelete}`, {
+          method: "DELETE"
+        });
+        
+        if (response.ok) {
+          alert(`Namespace ${namespaceToDelete} deleted`);
+          document.getElementById("deleteNamespaceModal").classList.add("hidden");
+          loadDashboard();
+        } else {
+          const error = await response.json();
+          alert(`Error: ${error.error}`);
+        }
+      } catch (error) {
+        console.error("Error deleting namespace:", error);
+        alert("Error deleting namespace");
+      } finally {
+        isDeletingNamespace = false;
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+        confirmBtn.classList.remove("bg-gray-500", "cursor-not-allowed");
+        confirmBtn.classList.add("bg-red-600", "hover:bg-red-500");
+      }
+    });
+
     document.getElementById("logoutBtn").addEventListener("click", async () => {
-      await fetch("/api/logout", { method: "POST", credentials: "include" });
+      await makeAuthedRequest("/api/logout", { method: "POST" });
       window.location.href = "/";
+    });
+
+    document.addEventListener("click", (e) => {
+      if (e.target.id === "createNamespaceModal") {
+        document.getElementById("createNamespaceModal").classList.add("hidden");
+      }
+      if (e.target.id === "deleteNamespaceModal") {
+        document.getElementById("deleteNamespaceModal").classList.add("hidden");
+      }
     });
 
     loadDashboard();
