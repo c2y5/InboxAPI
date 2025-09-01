@@ -59,7 +59,8 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## Contributing 🤝
 
-Feel free to submit issues or pull requests! Suggestions to improve code.line are very welcome.
+Feel free to submit issues or pull requests! Suggestions to improve InboxAPI are very welcome.
 
 ---
+
 
