@@ -47,7 +47,7 @@ Run the app locally:
 python app.py
 ```
 
-Open your browser at `http://localhost:5000` to create and view code snippets.
+Open your browser at `http://localhost:5000`.
 
 ---
 
@@ -62,3 +62,4 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 Feel free to submit issues or pull requests! Suggestions to improve code.line are very welcome.
 
 ---
+
